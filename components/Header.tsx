@@ -19,7 +19,7 @@ export function Header({ paperCount, onAddPaper }: HeaderProps) {
             </div>
             <div>
               <h1 className="text-base font-bold leading-tight text-foreground">
-                Hitec Zang
+                HaiBay
               </h1>
               <p className="text-xs text-muted-foreground leading-tight">
                 Research Knowledge Database

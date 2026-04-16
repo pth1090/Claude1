@@ -40,7 +40,7 @@ export async function fetchByDOI(doi: string): Promise<CrossRefResult> {
 
   const res = await fetch(url, {
     headers: {
-      "User-Agent": "HitecZangKnowledgeDB/1.0 (mailto:info@hitec-zang.de)",
+      "User-Agent": "HaiBayKnowledgeDB/1.0 (mailto:info@haibay.de)",
     },
     signal: AbortSignal.timeout(15000),
   });

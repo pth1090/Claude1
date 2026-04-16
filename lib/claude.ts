@@ -55,9 +55,9 @@ export async function summarizeAndCategorize(params: {
     model: "claude-sonnet-4-6",
     max_tokens: 1024,
     system:
-      "You are a research assistant for Hitec Zang GmbH, a German laboratory automation company. " +
+      "You are a research assistant for HaiBay, a laboratory automation company. " +
       "Given a scientific paper's metadata, write a concise 2–3 sentence summary explaining what the research " +
-      "demonstrates and how it relates to laboratory automation or Hitec Zang products. " +
+      "demonstrates and how it relates to laboratory automation or HaiBay products. " +
       "Then identify which product tags and research focus tags from the provided lists apply to the paper. " +
       "Only select tags that clearly match — do not guess. Return your answer using the provided tool.",
     tools: [

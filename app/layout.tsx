@@ -6,8 +6,8 @@ import { Toaster } from "@/components/ui/toaster";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Hitec Zang – Research Knowledge Database",
-  description: "Scientific publications enabled by Hitec Zang laboratory products",
+  title: "HaiBay – Research Knowledge Database",
+  description: "Scientific publications enabled by HaiBay laboratory products",
 };
 
 export default function RootLayout({
