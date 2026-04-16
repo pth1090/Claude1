@@ -7,8 +7,6 @@ services:
     volumes:
       - papers_data:/app/data
     restart: unless-stopped
-    networks:
-      - traefik
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.haibay.rule=Host(`haibay.srv1553019.hstgr.cloud`)"
@@ -22,7 +20,3 @@ services:
 
 volumes:
   papers_data:
-
-networks:
-  traefik:
-    external: true
