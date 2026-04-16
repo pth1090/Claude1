@@ -10,7 +10,9 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.haibay.rule=Host(`haibay.srv1553019.hstgr.cloud`)"
-      - "traefik.http.routers.haibay.entrypoints=web"
+      - "traefik.http.routers.haibay.entrypoints=websecure"
+      - "traefik.http.routers.haibay.tls=true"
+      - "traefik.http.routers.haibay.tls.certresolver=letsencrypt"
       - "traefik.http.services.haibay.loadbalancer.server.port=3000"
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:3000 || exit 1"]
