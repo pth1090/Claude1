@@ -1,0 +1,19 @@
+services:
+  hitec-knowledge-db:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - DATABASE_PATH=/app/data/papers.db
+    volumes:
+      - papers_data:/app/data   # SQLite DB persists here across restarts
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  papers_data:
