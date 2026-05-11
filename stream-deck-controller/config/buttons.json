@@ -1,0 +1,63 @@
+{
+  "opcua": {
+    "endpoint": "opc.tcp://localhost:4840",
+    "username": "",
+    "password": ""
+  },
+  "modbus": {
+    "host": "192.168.1.50",
+    "port": 502,
+    "unit_id": 1,
+    "poll_interval_ms": 1000
+  },
+  "buttons": [
+    {
+      "index": 0,
+      "enabled": false,
+      "label": "Taste 1",
+      "color": "#1a3a5c",
+      "display": null,
+      "action": null
+    },
+    {
+      "index": 1,
+      "enabled": false,
+      "label": "Taste 2",
+      "color": "#1a3a5c",
+      "display": null,
+      "action": null
+    },
+    {
+      "index": 2,
+      "enabled": false,
+      "label": "Taste 3",
+      "color": "#1a3a5c",
+      "display": null,
+      "action": null
+    },
+    {
+      "index": 3,
+      "enabled": false,
+      "label": "Taste 4",
+      "color": "#1a3a5c",
+      "display": null,
+      "action": null
+    },
+    {
+      "index": 4,
+      "enabled": false,
+      "label": "Taste 5",
+      "color": "#1a3a5c",
+      "display": null,
+      "action": null
+    },
+    {
+      "index": 5,
+      "enabled": false,
+      "label": "Taste 6",
+      "color": "#1a3a5c",
+      "display": null,
+      "action": null
+    }
+  ]
+}

@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LabVision Stream Deck Controller</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f1117;
+      color: #e0e6ed;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #2a2f3a;
+    }
+
+    header h1 {
+      font-size: 1.4rem;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .status-bar {
+      display: flex;
+      gap: 16px;
+      font-size: 0.8rem;
+    }
+
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #555;
+    }
+
+    .dot.connected { background: #4ade80; }
+    .dot.disconnected { background: #f87171; }
+    .dot.connecting { background: #facc15; animation: pulse 1s infinite; }
+
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* Connection Settings */
+    .section {
+      background: #1a1f2b;
+      border: 1px solid #2a2f3a;
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+
+    .section h2 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #8899aa;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 12px;
+    }
+
+    .conn-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+
+    .conn-row label {
+      font-size: 0.82rem;
+      color: #8899aa;
+      min-width: 60px;
+    }
+
+    input[type="text"], input[type="number"], input[type="password"],
+    input[type="color"], select {
+      background: #0f1117;
+      border: 1px solid #2a2f3a;
+      color: #e0e6ed;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 0.85rem;
+      outline: none;
+    }
+
+    input[type="text"]:focus, input[type="number"]:focus,
+    select:focus { border-color: #3b82f6; }
+
+    input[type="color"] {
+      padding: 2px;
+      width: 40px;
+      height: 30px;
+      cursor: pointer;
+    }
+
+    .input-wide { width: 260px; }
+    .input-mid  { width: 130px; }
+    .input-sm   { width: 80px; }
+
+    button {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: background .15s;
+    }
+
+    button:hover { background: #1d4ed8; }
+    button.secondary { background: #374151; }
+    button.secondary:hover { background: #4b5563; }
+    button.danger { background: #dc2626; }
+    button.danger:hover { background: #b91c1c; }
+    button.small { padding: 3px 8px; font-size: 0.75rem; }
+
+    /* Stream Deck Grid */
+    .deck-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 100px);
+      grid-template-rows: repeat(2, 100px);
+      gap: 10px;
+      margin: 0 auto;
+      width: fit-content;
+    }
+
+    .deck-btn {
+      width: 100px; height: 100px;
+      border-radius: 12px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid transparent;
+      transition: border-color .15s, transform .1s;
+      position: relative;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    .deck-btn:hover { border-color: #3b82f6; }
+    .deck-btn.selected { border-color: #60a5fa; box-shadow: 0 0 0 2px #3b82f650; }
+    .deck-btn.disabled { opacity: 0.4; cursor: default; }
+
+    .deck-btn .btn-index {
+      position: absolute;
+      top: 4px; left: 6px;
+      font-size: 0.65rem;
+      color: rgba(255,255,255,0.4);
+    }
+
+    .deck-btn .btn-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #fff;
+      text-align: center;
+      padding: 0 4px;
+      line-height: 1.2;
+      max-width: 90px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    .deck-btn .btn-value {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #fff;
+      margin: 2px 0;
+    }
+
+    .deck-btn .btn-unit {
+      font-size: 0.7rem;
+      color: rgba(255,255,255,0.6);
+    }
+
+    /* Editor Panel */
+    #editor {
+      display: none;
+    }
+
+    .editor-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    @media (max-width: 640px) {
+      .editor-grid { grid-template-columns: 1fr; }
+    }
+
+    .field-group {
+      margin-bottom: 10px;
+    }
+
+    .field-group label {
+      display: block;
+      font-size: 0.8rem;
+      color: #8899aa;
+      margin-bottom: 4px;
+    }
+
+    .threshold-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 6px;
+      font-size: 0.82rem;
+    }
+
+    .threshold-row select { width: 70px; }
+    .threshold-row input[type="number"] { width: 70px; }
+
+    .divider {
+      height: 1px;
+      background: #2a2f3a;
+      margin: 12px 0;
+    }
+
+    .editor-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 14px;
+      color: #93c5fd;
+    }
+
+    .toggle-section {
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #8899aa;
+      font-size: 0.82rem;
+      margin: 8px 0 4px;
+    }
+
+    .toggle-section::before {
+      content: "▶";
+      font-size: 0.65rem;
+      transition: transform .15s;
+    }
+
+    .toggle-section.open::before { transform: rotate(90deg); }
+
+    .collapsible { display: none; }
+    .collapsible.open { display: block; }
+
+    .action-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 14px;
+      justify-content: flex-end;
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: #374151;
+      color: #93c5fd;
+      margin-left: 6px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>LabVision Stream Deck Controller</h1>
+  <div class="status-bar">
+    <div class="status-item">
+      <div class="dot" id="dot-opcua"></div>
+      <span>OPC UA</span>
+    </div>
+    <div class="status-item">
+      <div class="dot" id="dot-modbus"></div>
+      <span>Modbus</span>
+    </div>
+    <div class="status-item">
+      <div class="dot" id="dot-deck"></div>
+      <span>Stream Deck</span>
+    </div>
+  </div>
+</header>
+
+<!-- Connection Settings -->
+<div class="section">
+  <h2>Verbindung</h2>
+  <div class="conn-row">
+    <label>OPC UA</label>
+    <input type="text" id="opcua-endpoint" class="input-wide" placeholder="opc.tcp://localhost:4840">
+    <input type="text" id="opcua-user" class="input-mid" placeholder="Benutzer (opt.)">
+    <input type="password" id="opcua-pass" class="input-mid" placeholder="Passwort">
+    <button onclick="saveConnection()">Speichern</button>
+  </div>
+  <div class="conn-row">
+    <label>Modbus</label>
+    <input type="text" id="modbus-host" class="input-mid" placeholder="192.168.1.50">
+    <input type="number" id="modbus-port" class="input-sm" placeholder="502" value="502">
+    <label style="min-width:auto">Unit:</label>
+    <input type="number" id="modbus-unit" class="input-sm" placeholder="1" value="1">
+    <label style="min-width:auto">Poll ms:</label>
+    <input type="number" id="modbus-poll" class="input-sm" placeholder="1000" value="1000">
+  </div>
+</div>
+
+<!-- Stream Deck Grid -->
+<div class="section">
+  <h2>Stream Deck Mini — Layout <span class="badge">Taste anklicken zum Bearbeiten</span></h2>
+  <div class="deck-grid" id="deck-grid">
+    <!-- Buttons injected by JS -->
+  </div>
+</div>
+
+<!-- Editor -->
+<div class="section" id="editor">
+  <div class="editor-title" id="editor-title">Taste 0 bearbeiten</div>
+  <div class="editor-grid">
+    <!-- Left: basic + action -->
+    <div>
+      <div class="field-group">
+        <label>Bezeichnung</label>
+        <input type="text" id="e-label" class="input-wide" placeholder="z.B. Reaktor Start" maxlength="20">
+      </div>
+      <div class="field-group" style="display:flex;gap:12px;align-items:center">
+        <div>
+          <label>Hintergrundfarbe</label>
+          <input type="color" id="e-color" value="#1a3a5c">
+        </div>
+        <div>
+          <label>Aktiviert</label>
+          <input type="checkbox" id="e-enabled" style="width:18px;height:18px;cursor:pointer">
+        </div>
+      </div>
+
+      <div class="divider"></div>
+      <div class="toggle-section open" id="toggle-action" onclick="toggleSection('action')">Aktion bei Tastendruck</div>
+      <div class="collapsible open" id="section-action">
+        <div class="field-group">
+          <label>Protokoll</label>
+          <select id="e-act-proto" onchange="updateActionFields()">
+            <option value="">— Keine Aktion —</option>
+            <option value="opcua">OPC UA</option>
+            <option value="modbus">Modbus</option>
+          </select>
+        </div>
+        <div id="action-opcua-fields" style="display:none">
+          <div class="field-group">
+            <label>Node-ID</label>
+            <input type="text" id="e-act-nodeid" class="input-wide" placeholder="ns=2;s=Reactor1.Start">
+          </div>
+        </div>
+        <div id="action-modbus-fields" style="display:none">
+          <div class="field-group">
+            <label>Register-Adresse</label>
+            <input type="number" id="e-act-addr" class="input-sm" placeholder="0">
+          </div>
+          <div class="field-group">
+            <label>Register-Typ</label>
+            <select id="e-act-regtype">
+              <option value="holding">Holding Register</option>
+              <option value="coil">Coil</option>
+            </select>
+          </div>
+        </div>
+        <div id="action-value-fields" style="display:none">
+          <div class="field-group">
+            <label>Aktionstyp</label>
+            <select id="e-act-type">
+              <option value="write">Wert schreiben</option>
+              <option value="toggle">Umschalten (Toggle)</option>
+            </select>
+          </div>
+          <div class="field-group" id="write-value-group">
+            <label>Wert</label>
+            <input type="text" id="e-act-value" class="input-mid" placeholder="true / 1 / 75.0">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: display -->
+    <div>
+      <div class="toggle-section open" id="toggle-display" onclick="toggleSection('display')">Istwert-Anzeige auf Taste</div>
+      <div class="collapsible open" id="section-display">
+        <div class="field-group">
+          <label>Protokoll</label>
+          <select id="e-disp-proto" onchange="updateDisplayFields()">
+            <option value="">— Kein Anzeigewert —</option>
+            <option value="opcua">OPC UA</option>
+            <option value="modbus">Modbus</option>
+          </select>
+        </div>
+        <div id="disp-opcua-fields" style="display:none">
+          <div class="field-group">
+            <label>Node-ID</label>
+            <input type="text" id="e-disp-nodeid" class="input-wide" placeholder="ns=2;s=Reactor1.Temperature">
+          </div>
+        </div>
+        <div id="disp-modbus-fields" style="display:none">
+          <div class="field-group">
+            <label>Register-Adresse</label>
+            <input type="number" id="e-disp-addr" class="input-sm" placeholder="0">
+          </div>
+          <div class="field-group">
+            <label>Register-Typ</label>
+            <select id="e-disp-regtype">
+              <option value="holding">Holding Register</option>
+              <option value="input">Input Register</option>
+              <option value="coil">Coil</option>
+              <option value="discrete">Discrete Input</option>
+            </select>
+          </div>
+          <div class="field-group" style="display:flex;gap:8px">
+            <div>
+              <label>Skalierung</label>
+              <input type="number" id="e-disp-scale" class="input-sm" placeholder="1.0" value="1" step="any">
+            </div>
+            <div>
+              <label>Offset</label>
+              <input type="number" id="e-disp-offset" class="input-sm" placeholder="0" value="0" step="any">
+            </div>
+          </div>
+        </div>
+        <div id="disp-common-fields" style="display:none">
+          <div class="field-group" style="display:flex;gap:8px">
+            <div>
+              <label>Einheit</label>
+              <input type="text" id="e-disp-unit" class="input-sm" placeholder="°C">
+            </div>
+            <div>
+              <label>Nachkommastellen</label>
+              <input type="number" id="e-disp-dec" class="input-sm" placeholder="1" value="1" min="0" max="4">
+            </div>
+          </div>
+
+          <div class="divider"></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <label style="color:#8899aa;font-size:0.8rem">Farbschwellwerte</label>
+            <button class="small secondary" onclick="addThreshold()">+ Hinzufügen</button>
+          </div>
+          <div id="thresholds-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="action-row">
+    <button class="secondary" onclick="closeEditor()">Abbrechen</button>
+    <button onclick="saveButton()">Speichern</button>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
