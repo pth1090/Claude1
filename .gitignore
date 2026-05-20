@@ -41,3 +41,4 @@ tsconfig.tsbuildinfo
 .idea/
 *.swp
 *.swo
+calorimetry/backend/__pycache__
