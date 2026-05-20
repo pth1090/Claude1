@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kalorimetrische Batch-Auswertung</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <style>
+    .drop-zone { border: 2px dashed #94a3b8; transition: border-color .2s, background .2s; }
+    .drop-zone.dragover { border-color: #2563eb; background: #eff6ff; }
+    .nrmse-green { background:#dcfce7; color:#166534; }
+    .nrmse-yellow { background:#fef9c3; color:#854d0e; }
+    .nrmse-red { background:#fee2e2; color:#991b1b; }
+    .spinner { border: 3px solid #e5e7eb; border-top-color: #2563eb; border-radius: 50%;
+               width: 40px; height: 40px; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans">
+
+<!-- Loading overlay -->
+<div id="overlay" class="hidden fixed inset-0 bg-black/40 z-50 flex flex-col items-center justify-center gap-4">
+  <div class="spinner"></div>
+  <p class="text-white text-sm font-medium" id="overlay-msg">Berechnung läuft…</p>
+</div>
+
+<!-- Alert banner -->
+<div id="alert" class="hidden fixed top-4 left-1/2 -translate-x-1/2 z-50 max-w-xl w-full px-4">
+  <div class="bg-red-50 border border-red-300 rounded-lg px-4 py-3 flex items-start gap-3 shadow-lg">
+    <span class="text-red-600 text-lg">⚠</span>
+    <p class="text-red-700 text-sm flex-1" id="alert-msg"></p>
+    <button onclick="document.getElementById('alert').classList.add('hidden')"
+            class="text-red-400 hover:text-red-600 font-bold text-lg leading-none">×</button>
+  </div>
+</div>
+
+<div class="max-w-5xl mx-auto px-4 py-8">
+
+  <!-- Header -->
+  <div class="mb-8">
+    <h1 class="text-2xl font-bold text-gray-900">Kalorimetrische Batch-Auswertung</h1>
+    <p class="text-sm text-gray-500 mt-1">
+      2-State-nichtlineares Modell · MacLeod et al. 2018 (arXiv 1808.04518) · Doppelmantelreaktor
+    </p>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       SECTION 1: CALIBRATION
+  ══════════════════════════════════════════════════════════════════════════ -->
+  <section class="mb-8">
+    <h2 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+      <span class="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">1</span>
+      Kalibrierung — Parameteridentifikation
+    </h2>
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4">
+      <h3 class="font-medium text-gray-700 mb-3">Kalibrier-CSV hochladen</h3>
+      <div id="drop-calib" class="drop-zone rounded-lg p-6 text-center cursor-pointer mb-4"
+           onclick="document.getElementById('file-calib').click()">
+        <p class="text-gray-500 text-sm">CSV-Datei hier ablegen oder klicken</p>
+        <p class="text-xs text-gray-400 mt-1">Pflicht: time_s, T_r, T_jin, T_jout · Optional: T_amb, flow_kg_s, Q_calib_W</p>
+        <input type="file" id="file-calib" accept=".csv" class="hidden" />
+      </div>
+
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <div>
+          <label class="text-xs text-gray-500 block mb-1">cp Fluid [J/kg/K]</label>
+          <input id="cp-calib" type="number" value="4186" step="1"
+                 class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" />
+        </div>
+        <div>
+          <label class="text-xs text-gray-500 block mb-1">Q_Rührer [W]</label>
+          <input id="qstir-calib" type="number" value="0" step="0.1"
+                 class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" />
+        </div>
+      </div>
+
+      <button id="btn-upload-calib" onclick="uploadCalibration()"
+              class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-40">
+        Hochladen &amp; Vorschau
+      </button>
+
+      <div id="calib-preview" class="hidden mt-4">
+        <p class="text-xs text-gray-500 mb-1" id="calib-preview-info"></p>
+        <div class="overflow-x-auto">
+          <table id="calib-table" class="text-xs border-collapse w-full"></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Identification settings -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4">
+      <h3 class="font-medium text-gray-700 mb-3">Identifikations-Einstellungen</h3>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <div>
+          <label class="text-xs text-gray-500 block mb-1">Gewichtung T_r</label>
+          <input id="w-tr" type="number" value="2.0" step="0.1" min="0.1"
+                 class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" />
+        </div>
+        <div>
+          <label class="text-xs text-gray-500 block mb-1">Gewichtung T_j</label>
+          <input id="w-tj" type="number" value="1.0" step="0.1" min="0.1"
+                 class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" />
+        </div>
+        <div>
+          <label class="text-xs text-gray-500 block mb-1">Neustart-Anzahl</label>
+          <input id="n-restarts" type="number" value="1" step="1" min="1" max="10"
+                 class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" />
+        </div>
+      </div>
+      <button id="btn-identify" onclick="runIdentification()"
+              class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-40">
+        Identifikation starten
+      </button>
+    </div>
+
+    <!-- Calibration results -->
+    <div id="calib-results" class="hidden bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      <h3 class="font-medium text-gray-700 mb-3">Identifikations-Ergebnis</h3>
+
+      <div class="flex flex-wrap gap-3 mb-4">
+        <div class="rounded-lg px-3 py-2 text-sm font-medium" id="badge-nrmse-tr">NRMSE T_r: —</div>
+        <div class="rounded-lg px-3 py-2 text-sm font-medium" id="badge-nrmse-tj">NRMSE T_j: —</div>
+        <div class="bg-gray-100 text-gray-600 rounded-lg px-3 py-2 text-sm" id="badge-evals">Auswertungen: —</div>
+      </div>
+
+      <!-- Params table (editable) -->
+      <div class="mb-4">
+        <p class="text-xs text-gray-500 mb-2">Gefundene Parameter (editierbar für manuelle Korrektur):</p>
+        <div class="overflow-x-auto">
+          <table class="text-sm w-full border-collapse">
+            <thead>
+              <tr class="bg-gray-50">
+                <th class="text-left px-3 py-2 border border-gray-200 text-xs text-gray-500 font-medium">Parameter</th>
+                <th class="text-left px-3 py-2 border border-gray-200 text-xs text-gray-500 font-medium">Wert</th>
+                <th class="text-left px-3 py-2 border border-gray-200 text-xs text-gray-500 font-medium">Einheit</th>
+                <th class="text-left px-3 py-2 border border-gray-200 text-xs text-gray-500 font-medium">Bedeutung</th>
+              </tr>
+            </thead>
+            <tbody id="params-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="calib-plot" class="w-full" style="height:400px;"></div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       SECTION 2: EXPERIMENT ANALYSIS
+  ══════════════════════════════════════════════════════════════════════════ -->
+  <section class="mb-8">
+    <h2 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+      <span class="w-6 h-6 bg-green-600 text-white rounded-full flex items-center justify-center text-xs font-bold">2</span>
+      Versuchsauswertung — Q_rxn Berechnung
+    </h2>
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4">
+      <h3 class="font-medium text-gray-700 mb-3">Versuchs-CSV hochladen</h3>
+      <div id="drop-exp" class="drop-zone rounded-lg p-6 text-center cursor-pointer mb-4"
+           onclick="document.getElementById('file-exp').click()">
+        <p class="text-gray-500 text-sm">CSV-Datei hier ablegen oder klicken</p>
+        <p class="text-xs text-gray-400 mt-1">Gleiche Spaltenstruktur wie Kalibrier-CSV · Q_calib_W = 0 falls keine Heizung</p>
+        <input type="file" id="file-exp" accept=".csv" class="hidden" />
+      </div>
+
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <div>
+          <label class="text-xs text-gray-500 block mb-1">cp Fluid [J/kg/K]</label>
+          <input id="cp-exp" type="number" value="4186" step="1"
+                 class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" />
+        </div>
+        <div>
+          <label class="text-xs text-gray-500 block mb-1">Methode</label>
+          <select id="method" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm bg-white">
+            <option value="ode">ODE (empfohlen)</option>
+            <option value="direct">Direkte Wärmebilanz</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-gray-500 block mb-1">Glättungsfenster</label>
+          <input id="smooth-win" type="number" value="11" step="2" min="0"
+                 class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" />
+        </div>
+      </div>
+
+      <div class="flex gap-3">
+        <button id="btn-upload-exp" onclick="uploadExperiment()"
+                class="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded-lg">
+          Hochladen &amp; Vorschau
+        </button>
+        <button id="btn-analyze" onclick="runAnalysis()"
+                class="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded-lg">
+          Analysieren
+        </button>
+      </div>
+
+      <div id="exp-preview" class="hidden mt-4">
+        <p class="text-xs text-gray-500 mb-1" id="exp-preview-info"></p>
+        <div class="overflow-x-auto">
+          <table id="exp-table" class="text-xs border-collapse w-full"></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Analysis results -->
+    <div id="analysis-results" class="hidden bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      <h3 class="font-medium text-gray-700 mb-3">Ergebnisse</h3>
+
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6" id="metric-cards"></div>
+
+      <div id="analysis-plot" class="w-full" style="height:500px;"></div>
+
+      <div class="mt-4 flex gap-3">
+        <button onclick="exportResults()"
+                class="border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg">
+          Ergebnisse exportieren (JSON)
+        </button>
+      </div>
+    </div>
+  </section>
+
+</div><!-- /container -->
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+const state = {
+  sessionId: null,
+  apiBase: '/api/v1',
+  fitResult: null,
+  analysisResult: null,
+};
+
+const PARAM_META = [
+  { key: 'ca0',    unit: 'J/K',   desc: 'Wärmekapazität Reaktor (konst. Term)' },
+  { key: 'ca1',    unit: 'J/K²',  desc: 'Wärmekapazität Reaktor (Temp.-Koeff.)' },
+  { key: 'Cj',     unit: 'J/K',   desc: 'Wärmekapazität Mantel' },
+  { key: 'ka0',    unit: 'W/K',   desc: 'UA Reaktor-Mantel (konst. Term)' },
+  { key: 'ka1',    unit: 'W/K²',  desc: 'UA Reaktor-Mantel (T_r-Koeff.)' },
+  { key: 'ka2',    unit: 'W/K²',  desc: 'UA Reaktor-Mantel (T_j-Koeff.)' },
+  { key: 'ka3',    unit: 'W/K',   desc: 'Wärmeverlust Reaktor → Umgebung' },
+  { key: 'Q_stir', unit: 'W',     desc: 'Rührerleistung (konstant)' },
+];
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+async function initSession() {
+  try {
+    const r = await fetch(`${state.apiBase}/session`, { method: 'POST' });
+    const d = await r.json();
+    state.sessionId = d.session_id;
+  } catch (e) {
+    showAlert('Verbindung zum Server fehlgeschlagen. Ist der Server gestartet?');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  initSession();
+  setupDropZone('drop-calib', 'file-calib');
+  setupDropZone('drop-exp', 'file-exp');
+});
+
+// ── Drop zones ───────────────────────────────────────────────────────────────
+function setupDropZone(zoneId, inputId) {
+  const zone = document.getElementById(zoneId);
+  const input = document.getElementById(inputId);
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('dragover');
+    if (e.dataTransfer.files[0]) {
+      input.files = e.dataTransfer.files;
+      if (zoneId === 'drop-calib') uploadCalibration();
+      else uploadExperiment();
+    }
+  });
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function showAlert(msg) {
+  document.getElementById('alert-msg').textContent = msg;
+  document.getElementById('alert').classList.remove('hidden');
+}
+
+function showOverlay(msg = 'Berechnung läuft…') {
+  document.getElementById('overlay-msg').textContent = msg;
+  document.getElementById('overlay').classList.remove('hidden');
+}
+function hideOverlay() {
+  document.getElementById('overlay').classList.add('hidden');
+}
+
+function renderPreviewTable(tableId, rows) {
+  const tbl = document.getElementById(tableId);
+  if (!rows || rows.length === 0) { tbl.innerHTML = ''; return; }
+  const keys = Object.keys(rows[0]);
+  tbl.innerHTML = `
+    <thead><tr>${keys.map(k =>
+      `<th class="px-2 py-1 border border-gray-200 bg-gray-50 text-gray-500 font-medium text-left">${k}</th>`
+    ).join('')}</tr></thead>
+    <tbody>${rows.map(row =>
+      `<tr>${keys.map(k =>
+        `<td class="px-2 py-1 border border-gray-200">${row[k] !== null ? Number(row[k]).toFixed(4) : '—'}</td>`
+      ).join('')}</tr>`
+    ).join('')}</tbody>`;
+}
+
+function nrmseBadgeClass(v) {
+  if (v === null || v === undefined) return 'bg-gray-100 text-gray-500';
+  if (v < 0.01) return 'nrmse-green';
+  if (v < 0.03) return 'nrmse-yellow';
+  return 'nrmse-red';
+}
+
+function fmtNrmse(v) {
+  if (v === null || v === undefined) return '—';
+  return (v * 100).toFixed(2) + ' %';
+}
+
+async function apiFetch(url, opts = {}) {
+  const r = await fetch(url, opts);
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({ detail: r.statusText }));
+    throw new Error(body.detail || r.statusText);
+  }
+  return r.json();
+}
+
+// ── Upload Calibration ───────────────────────────────────────────────────────
+async function uploadCalibration() {
+  const file = document.getElementById('file-calib').files[0];
+  if (!file) { showAlert('Bitte zuerst eine CSV-Datei auswählen.'); return; }
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('session_id', state.sessionId);
+  fd.append('cp_fluid', document.getElementById('cp-calib').value);
+  fd.append('Q_stir', document.getElementById('qstir-calib').value);
+
+  showOverlay('Kalibrier-CSV wird verarbeitet…');
+  try {
+    const d = await apiFetch(`${state.apiBase}/upload/calibration`, { method: 'POST', body: fd });
+    document.getElementById('calib-preview-info').textContent =
+      `${d.n_rows} Zeilen · t: ${d.t_start.toFixed(0)} s – ${d.t_end.toFixed(0)} s · Spalten: ${d.columns_detected.join(', ')}`;
+    renderPreviewTable('calib-table', d.preview);
+    document.getElementById('calib-preview').classList.remove('hidden');
+    document.getElementById('drop-calib').innerHTML =
+      `<p class="text-green-700 font-medium text-sm">✓ ${file.name}</p>`;
+  } catch (e) {
+    showAlert('Upload fehlgeschlagen: ' + e.message);
+  } finally {
+    hideOverlay();
+  }
+}
+
+// ── Run Identification ───────────────────────────────────────────────────────
+async function runIdentification() {
+  const body = {
+    session_id: state.sessionId,
+    weights: [
+      parseFloat(document.getElementById('w-tr').value),
+      parseFloat(document.getElementById('w-tj').value),
+    ],
+    n_restarts: parseInt(document.getElementById('n-restarts').value),
+  };
+
+  showOverlay('Parameteridentifikation läuft (kann 10–60 s dauern)…');
+  try {
+    const d = await apiFetch(`${state.apiBase}/identify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    state.fitResult = d;
+    renderCalibResults(d);
+    document.getElementById('calib-results').classList.remove('hidden');
+  } catch (e) {
+    showAlert('Identifikation fehlgeschlagen: ' + e.message);
+  } finally {
+    hideOverlay();
+  }
+}
+
+function renderCalibResults(d) {
+  // NRMSE badges
+  document.getElementById('badge-nrmse-tr').textContent = `NRMSE T_r: ${fmtNrmse(d.nrmse_Tr)}`;
+  document.getElementById('badge-nrmse-tr').className = `rounded-lg px-3 py-2 text-sm font-medium ${nrmseBadgeClass(d.nrmse_Tr)}`;
+  document.getElementById('badge-nrmse-tj').textContent = `NRMSE T_j: ${fmtNrmse(d.nrmse_Tj)}`;
+  document.getElementById('badge-nrmse-tj').className = `rounded-lg px-3 py-2 text-sm font-medium ${nrmseBadgeClass(d.nrmse_Tj)}`;
+  document.getElementById('badge-evals').textContent = `Auswertungen: ${d.n_evals}`;
+
+  // Params table
+  const tbody = document.getElementById('params-table-body');
+  tbody.innerHTML = PARAM_META.map(m => `
+    <tr class="hover:bg-gray-50">
+      <td class="px-3 py-2 border border-gray-200 font-mono text-blue-700">${m.key}</td>
+      <td class="px-3 py-2 border border-gray-200">
+        <input type="number" step="any"
+               id="param-${m.key}"
+               value="${d.params[m.key] !== undefined ? Number(d.params[m.key]).toFixed(4) : '0'}"
+               class="w-full border-0 bg-transparent focus:outline-none text-sm font-mono" />
+      </td>
+      <td class="px-3 py-2 border border-gray-200 text-gray-400 text-xs">${m.unit}</td>
+      <td class="px-3 py-2 border border-gray-200 text-gray-500 text-xs">${m.desc}</td>
+    </tr>`).join('');
+
+  plotCalib(d.timeseries);
+}
+
+function plotCalib(ts) {
+  const layout = {
+    grid: { rows: 2, columns: 1, pattern: 'independent' },
+    margin: { t: 30, b: 50, l: 60, r: 20 },
+    showlegend: true,
+    legend: { orientation: 'h', y: -0.15 },
+    xaxis:  { title: 'Zeit [s]' },
+    xaxis2: { title: 'Zeit [s]' },
+    yaxis:  { title: 'T_r [°C]' },
+    yaxis2: { title: 'T_j [°C]' },
+  };
+  const traces = [
+    { x: ts.t, y: ts.T_r_meas, name: 'T_r gemessen', line: { color: '#2563eb' }, xaxis: 'x', yaxis: 'y' },
+    { x: ts.t, y: ts.T_r_sim,  name: 'T_r simuliert', line: { color: '#2563eb', dash: 'dash' }, xaxis: 'x', yaxis: 'y' },
+    { x: ts.t, y: ts.T_j_meas, name: 'T_j gemessen', line: { color: '#dc2626' }, xaxis: 'x2', yaxis: 'y2' },
+    { x: ts.t, y: ts.T_j_sim,  name: 'T_j simuliert', line: { color: '#dc2626', dash: 'dash' }, xaxis: 'x2', yaxis: 'y2' },
+  ];
+  Plotly.newPlot('calib-plot', traces, layout, { responsive: true });
+}
+
+// ── Upload Experiment ────────────────────────────────────────────────────────
+async function uploadExperiment() {
+  const file = document.getElementById('file-exp').files[0];
+  if (!file) { showAlert('Bitte zuerst eine CSV-Datei auswählen.'); return; }
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('session_id', state.sessionId);
+  fd.append('cp_fluid', document.getElementById('cp-exp').value);
+
+  showOverlay('Versuchs-CSV wird verarbeitet…');
+  try {
+    const d = await apiFetch(`${state.apiBase}/upload/experiment`, { method: 'POST', body: fd });
+    document.getElementById('exp-preview-info').textContent =
+      `${d.n_rows} Zeilen · t: ${d.t_start.toFixed(0)} s – ${d.t_end.toFixed(0)} s · Spalten: ${d.columns_detected.join(', ')}`;
+    renderPreviewTable('exp-table', d.preview);
+    document.getElementById('exp-preview').classList.remove('hidden');
+    document.getElementById('drop-exp').innerHTML =
+      `<p class="text-green-700 font-medium text-sm">✓ ${file.name}</p>`;
+  } catch (e) {
+    showAlert('Upload fehlgeschlagen: ' + e.message);
+  } finally {
+    hideOverlay();
+  }
+}
+
+// ── Run Analysis ─────────────────────────────────────────────────────────────
+async function runAnalysis() {
+  // Collect possibly-edited params
+  let overrideParams = null;
+  if (state.fitResult) {
+    overrideParams = {};
+    for (const m of PARAM_META) {
+      const el = document.getElementById(`param-${m.key}`);
+      overrideParams[m.key] = el ? parseFloat(el.value) : state.fitResult.params[m.key];
+    }
+  }
+
+  const body = {
+    session_id: state.sessionId,
+    method: document.getElementById('method').value,
+    smoothing_window: parseInt(document.getElementById('smooth-win').value),
+    override_params: overrideParams,
+  };
+
+  showOverlay('Reaktionswärme wird berechnet…');
+  try {
+    const d = await apiFetch(`${state.apiBase}/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    state.analysisResult = d;
+    renderAnalysisResults(d);
+    document.getElementById('analysis-results').classList.remove('hidden');
+  } catch (e) {
+    showAlert('Analyse fehlgeschlagen: ' + e.message);
+  } finally {
+    hideOverlay();
+  }
+}
+
+function renderAnalysisResults(d) {
+  const m = d.metrics;
+  const cards = [
+    { label: 'Gesamtenergie', value: m.cumulative_energy_kJ !== null ? m.cumulative_energy_kJ.toFixed(2) + ' kJ' : '—', color: 'blue' },
+    { label: 'Peak Q_rxn', value: m.peak_Q_rxn_W !== null ? m.peak_Q_rxn_W.toFixed(1) + ' W' : '—', color: 'green' },
+    { label: 'Reaktionsdauer', value: m.reaction_duration_min !== null ? m.reaction_duration_min.toFixed(1) + ' min' : '—', color: 'purple' },
+    { label: '|Peak| Q_rxn', value: m.peak_abs_Q_rxn_W !== null ? m.peak_abs_Q_rxn_W.toFixed(1) + ' W' : '—', color: 'orange' },
+  ];
+  const colorMap = {
+    blue: 'bg-blue-50 border-blue-200 text-blue-800',
+    green: 'bg-green-50 border-green-200 text-green-800',
+    purple: 'bg-purple-50 border-purple-200 text-purple-800',
+    orange: 'bg-orange-50 border-orange-200 text-orange-800',
+  };
+  document.getElementById('metric-cards').innerHTML = cards.map(c => `
+    <div class="rounded-lg border px-4 py-3 ${colorMap[c.color]}">
+      <p class="text-xs font-medium opacity-70">${c.label}</p>
+      <p class="text-xl font-bold mt-1">${c.value}</p>
+    </div>`).join('');
+
+  plotAnalysis(d.timeseries);
+}
+
+function plotAnalysis(ts) {
+  const traces = [
+    {
+      x: ts.t, y: ts.T_r_meas, name: 'T_r [°C]',
+      line: { color: '#2563eb' },
+      xaxis: 'x', yaxis: 'y',
+    },
+    {
+      x: ts.t, y: ts.Q_rxn, name: 'Q_rxn [W]',
+      line: { color: '#16a34a' },
+      xaxis: 'x2', yaxis: 'y2',
+    },
+    {
+      x: ts.t, y: ts.Q_rxn_cumulative_kJ, name: 'Kum. Energie [kJ]',
+      line: { color: '#9333ea', dash: 'dot' },
+      xaxis: 'x2', yaxis: 'y3',
+    },
+  ];
+
+  const layout = {
+    grid: { rows: 2, columns: 1, pattern: 'independent' },
+    margin: { t: 30, b: 50, l: 60, r: 60 },
+    showlegend: true,
+    legend: { orientation: 'h', y: -0.15 },
+    xaxis:  { title: 'Zeit [s]' },
+    xaxis2: { title: 'Zeit [s]' },
+    yaxis:  { title: 'T_r [°C]' },
+    yaxis2: { title: 'Q_rxn [W]', side: 'left' },
+    yaxis3: { title: 'Kum. Energie [kJ]', side: 'right', overlaying: 'y2' },
+  };
+
+  Plotly.newPlot('analysis-plot', traces, layout, { responsive: true });
+}
+
+// ── Export ───────────────────────────────────────────────────────────────────
+function exportResults() {
+  const data = {
+    fit_result: state.fitResult,
+    analysis_result: state.analysisResult,
+    exported_at: new Date().toISOString(),
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `calorimetry_result_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>
