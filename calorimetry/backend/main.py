@@ -23,7 +23,7 @@ from pydantic import BaseModel
 
 from models import ModelParams, simulate
 from identification import fit_parameters, FitResult
-from analysis import infer_Q_rxn_pointwise, direct_heat_balance, compute_metrics
+from analysis import infer_Q_rxn_1state, infer_Q_rxn_pointwise, direct_heat_balance, compute_metrics
 
 
 # ── Column alias resolution ───────────────────────────────────────────────────
@@ -284,7 +284,7 @@ async def identify(req: IdentifyRequest):
     df = s.calib_df
     t   = df["time_s"].to_numpy(dtype=float)
     T_r = df["T_r"].to_numpy(dtype=float)
-    T_j = ((df["T_jin"] + df["T_jout"]) / 2.0).to_numpy(dtype=float)
+    T_j = df["T_jout"].to_numpy(dtype=float)  # CSTR jacket: T_j = outlet temperature
     inputs = _df_to_inputs(df)
 
     init_params = (
@@ -354,8 +354,8 @@ async def analyze(req: AnalyzeRequest):
     sw     = req.smoothing_window
 
     if req.method == "ode":
-        Q_rxn = infer_Q_rxn_pointwise(
-            t, T_r, T_j, T_amb, mdot, T_jin, Q_cal, params, smoothing_window=sw
+        Q_rxn = infer_Q_rxn_1state(
+            t, T_r, T_jout, T_jin, T_amb, mdot, Q_cal, params, smoothing_window=sw
         )
     elif req.method == "direct":
         Q_rxn = direct_heat_balance(

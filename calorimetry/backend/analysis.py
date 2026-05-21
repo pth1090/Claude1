@@ -34,6 +34,44 @@ def _smooth(arr: np.ndarray, window: int) -> np.ndarray:
     return savgol_filter(arr, window_length=w, polyorder=2)
 
 
+def infer_Q_rxn_1state(
+    t: np.ndarray,
+    T_r: np.ndarray,
+    T_jout: np.ndarray,
+    T_jin: np.ndarray,
+    T_amb: np.ndarray,
+    mdot_cpf: np.ndarray,
+    Q_calib: np.ndarray,
+    params: ModelParams,
+    smoothing_window: int = 11,
+) -> np.ndarray:
+    """
+    1-State energy balance inversion (primary method for full dataset).
+    Q_jacket = mdot*cp*(T_jin - T_jout) is measured directly.
+
+      Q_rxn = C_r(T_r)*dT_r/dt - Q_stir
+              - mdot_cpf*(T_jin - T_jout)
+              - ka3*(T_amb - T_r)
+              - Q_calib
+    """
+    T_r_smooth   = _smooth(T_r, smoothing_window)
+    T_jout_smooth = _smooth(T_jout, smoothing_window)
+    T_jin_smooth  = _smooth(T_jin, smoothing_window)
+
+    dTr_dt  = _central_diff(t, T_r_smooth)
+    Q_jacket = mdot_cpf * (T_jin_smooth - T_jout_smooth)
+
+    cr = Cr(T_r_smooth, params.ca0, params.ca1)
+    cr = np.maximum(cr, 1.0)
+
+    Q_rxn = (cr * dTr_dt
+             - params.Q_stir
+             - Q_jacket
+             - params.ka3 * (T_amb - T_r_smooth)
+             - Q_calib)
+    return Q_rxn
+
+
 def infer_Q_rxn_pointwise(
     t: np.ndarray,
     T_r: np.ndarray,
@@ -46,10 +84,10 @@ def infer_Q_rxn_pointwise(
     smoothing_window: int = 11,
 ) -> np.ndarray:
     """
-    Invert the reactor energy balance pointwise:
-      Q_rxn = C_r(T_r) * dT_r/dt - Q_stir
+    2-State energy balance inversion (fallback when T_jout not available separately).
+      Q_rxn = C_r(T_r)*dT_r/dt - Q_stir
               - UA_rj(T_r,T_j)*(T_j - T_r)
-              - UA_loss*(T_amb - T_r)
+              - ka3*(T_amb - T_r)
               - Q_calib
     """
     T_r_smooth = _smooth(T_r, smoothing_window)
