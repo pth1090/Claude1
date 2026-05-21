@@ -20,5 +20,23 @@ services:
       timeout: 10s
       retries: 3
 
+  calorimetry:
+    build:
+      context: ./calorimetry
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.calo.rule=Host(`calo.srv1553019.hstgr.cloud`)"
+      - "traefik.http.routers.calo.entrypoints=websecure"
+      - "traefik.http.routers.calo.tls=true"
+      - "traefik.http.routers.calo.tls.certresolver=letsencrypt"
+      - "traefik.http.services.calo.loadbalancer.server.port=8000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8000/api/v1/session || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 volumes:
   papers_data:
