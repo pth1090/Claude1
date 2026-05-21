@@ -27,11 +27,18 @@ services:
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
+      # HTTPS router
       - "traefik.http.routers.calo.rule=Host(`calo.srv1553019.hstgr.cloud`)"
       - "traefik.http.routers.calo.entrypoints=websecure"
       - "traefik.http.routers.calo.tls=true"
       - "traefik.http.routers.calo.tls.certresolver=letsencrypt"
       - "traefik.http.services.calo.loadbalancer.server.port=8000"
+      # HTTP → HTTPS redirect
+      - "traefik.http.routers.calo-http.rule=Host(`calo.srv1553019.hstgr.cloud`)"
+      - "traefik.http.routers.calo-http.entrypoints=web"
+      - "traefik.http.routers.calo-http.middlewares=calo-https-redirect"
+      - "traefik.http.middlewares.calo-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.calo-https-redirect.redirectscheme.permanent=true"
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:8000/api/v1/session || exit 1"]
       interval: 30s
