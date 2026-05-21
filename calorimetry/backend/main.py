@@ -114,6 +114,7 @@ class SessionData:
     fit_result: Optional[FitResult] = None
     experiment_df: Optional[pd.DataFrame] = None
     analysis_result: Optional[dict] = None
+    Q_stir: float = 0.0
     created_at: datetime = field(default_factory=datetime.utcnow)
 
     def is_expired(self) -> bool:
@@ -189,6 +190,7 @@ class IdentifyRequest(BaseModel):
     weights: list[float] = [2.0, 1.0]
     n_restarts: int = 1
     smoothing_window: int = 0
+    Q_stir: Optional[float] = None  # overrides value from upload form if set
 
 
 class AnalyzeRequest(BaseModel):
@@ -237,6 +239,7 @@ async def _handle_upload(
 
     if which == "calibration":
         s.calib_df = df
+        s.Q_stir = Q_stir
         s.fit_result = None
     else:
         s.experiment_df = df
@@ -288,7 +291,7 @@ async def identify(req: IdentifyRequest):
         ModelParams.from_dict(req.initial_params)
         if req.initial_params else None
     )
-    Q_stir = init_params.Q_stir if init_params else 0.0
+    Q_stir = req.Q_stir if req.Q_stir is not None else s.Q_stir
 
     def _fit():
         return fit_parameters(

@@ -94,6 +94,11 @@
       <h3 class="font-medium text-gray-700 mb-3">Identifikations-Einstellungen</h3>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <div>
+          <label class="text-xs text-gray-500 block mb-1">Q_Rührer [W]</label>
+          <input id="qstir-identify" type="number" value="0" step="0.1"
+                 class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" />
+        </div>
+        <div>
           <label class="text-xs text-gray-500 block mb-1">Gewichtung T_r</label>
           <input id="w-tr" type="number" value="2.0" step="0.1" min="0.1"
                  class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" />
@@ -357,6 +362,7 @@ async function uploadCalibration() {
 async function runIdentification() {
   const body = {
     session_id: state.sessionId,
+    Q_stir: parseFloat(document.getElementById('qstir-identify').value),
     weights: [
       parseFloat(document.getElementById('w-tr').value),
       parseFloat(document.getElementById('w-tj').value),
